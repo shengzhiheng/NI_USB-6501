@@ -43,11 +43,11 @@ def get_adapter(**kwargs):
     return NiUsb6501(device)
 
 
+def find_adapters(**kwargs):
     """
     Returns NiUsb6501 handle for every adapter that is connected to PC.
     Forwards all parameters to pyusb (http://pyusb.sourceforge.net/docs/1.0/tutorial.html)
     """
-def find_adapters(**kwargs):
     devices = usb.core.find(find_all=True, idVendor=ID_VENDOR, idProduct=ID_PRODUCT, **kwargs)
     if not devices:
         raise ValueError('Device not found')
@@ -65,11 +65,12 @@ class NiUsb6501:
     def __init__(self, device):
         """ used only internally via get_adapter() and find_adapters() """
         self.device = device
-        cfg = self.device.get_active_configuration() 
-        interface_number = cfg[(0,0)].bInterfaceNumber
-        
-        if self.device.is_kernel_driver_active(interface_number):
-            self.device.detach_kernel_driver(interface_number)
+        cfg = self.device.get_active_configuration()
+        print(cfg)
+        self.interface_number = cfg[(0, 0)].bInterfaceNumber
+
+        if self.device.is_kernel_driver_active(self.interface_number):
+            self.device.detach_kernel_driver(self.interface_number)
         # set the active configuration. With no arguments, the first
         # configuration will be the active one
         self.device.set_configuration()
@@ -83,12 +84,10 @@ class NiUsb6501:
         bit = 0: read
         bit = 1: write
         """
-        buf = list("\x02\x10\x00\x00\x00\x05\x00\x00\x00\x00\x05\x00\x00\x00\x00\x00")
-
-        buf[6] = chr(port0)
-        buf[7] = chr(port1)
-        buf[8] = chr(port2)
-        buf = ''.join(buf)
+        buf = bytearray(b"\x02\x10\x00\x00\x00\x05\x00\x00\x00\x00\x05\x00\x00\x00\x00\x00")
+        buf[6] = port0
+        buf[7] = port1
+        buf[8] = port2
 
         return self.send_request(0x12, buf)
 
@@ -97,18 +96,16 @@ class NiUsb6501:
         Read the value from all read-mode pins from one of the 8 PIN ports
         port is 0, 1 or 2
         """
-        buf = list("\x02\x10\x00\x00\x00\x03\x00\x00")
+        buf = bytearray(b"\x02\x10\x00\x00\x00\x03\x00\x00")
+        buf[6] = port
 
-        buf[6] = chr(port)
-        buf = ''.join(buf)
-
-        response = self.send_request(0x0e, buf)
+        response = bytearray(self.send_request(0x0e, buf))
 
         self.packet_matches(response,
-                            "\x00\x0c\x01\x00\x00\x00\x00\x02\x00\x03\x00\x00",
-                            "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\xff")
+                            b"\x00\x0c\x01\x00\x00\x00\x00\x02\x00\x03\x00\x00",
+                            b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\xff")
 
-        return ord(response[10])
+        return response[10]
 
     def write_port(self, port, value):
         """
@@ -116,16 +113,14 @@ class NiUsb6501:
         port is 0, 1 or 2
         value is 8 bits represented by integer
         """
-        buf = list("\x02\x10\x00\x00\x00\x03\x00\x00\x03\x00\x00\x00")
+        buf = bytearray(b"\x02\x10\x00\x00\x00\x03\x00\x00\x03\x00\x00\x00")
+        buf[6] = port
+        buf[9] = value
 
-        buf[6] = chr(port)
-        buf[9] = chr(value)
-        buf = ''.join(buf)
-
-        response = self.send_request(0x0f, buf)
+        response = bytearray(self.send_request(0x0f, buf))
         self.packet_matches(response,
-                            "\x00\x08\x01\x00\x00\x00\x00\x02",
-                            "\xff\xff\xff\xff\xff\xff\xff\xff")
+                            b"\x00\x08\x01\x00\x00\x00\x00\x02",
+                            b"\xff\xff\xff\xff\xff\xff\xff\xff")
 
         return response
 
@@ -155,29 +150,27 @@ class NiUsb6501:
         if len(request) + self.HEADER_PACKET + self.HEADER_DATA > 255:
             raise ValueError('Request too long (%d bytes)' % (len(request) + self.HEADER_PACKET + self.HEADER_DATA))
 
-        buf = list("\x00\x01\x00\x00\x00\x00\x01\x00")
-
-        buf[3] = chr(self.HEADER_PACKET + self.HEADER_DATA + len(request))
-        buf[5] = chr(self.HEADER_DATA + len(request))
-        buf[7] = chr(cmd)
-
-        buf = ''.join(buf) + request
+        buf = bytearray(b"\x00\x01\x00\x00\x00\x00\x01\x00")
+        buf[3] = self.HEADER_PACKET + self.HEADER_DATA + len(request)
+        buf[5] = self.HEADER_DATA + len(request)
+        buf[7] = cmd
+        buf += request
 
         assert self.device.write(self.EP_OUT, buf, self.INTERFACE) == len(buf)
 
-        ret = self.device.read(self.EP_IN, len(buf), self.INTERFACE)
+        ret = bytearray(self.device.read(self.EP_IN, len(buf), self.INTERFACE))
 
-        return ''.join([chr(x) for x in ret])[self.HEADER_PACKET:]
+        return ret[self.HEADER_PACKET:]
 
     def packet_matches(self, actual, expected, mask):
         if len(actual) != len(expected):
-            print repr(actual)
-            print repr(expected)
-            print repr(mask)
+            print(actual.hex(" "))
+            print(expected.hex(" "))
+            print(mask.hex(" "))
             raise ValueError('Protocol error - invalid response length %d' % len(actual))
 
         for b, e, m in zip(actual, expected, mask):
-            if (ord(b) & ord(m)) != (ord(e) & ord(m)):
+            if (b & m) != (e & m):
                 raise ValueError("""Protocol error - invalid response
                 actual:   %s
                 expected: %s
@@ -195,6 +188,7 @@ class NiUsb6501:
         self.device.reset()
         self.device = None
 
+
 #USAGE EXAMPLE
 if __name__ == "__main__":
     dev = get_adapter()
@@ -207,10 +201,10 @@ if __name__ == "__main__":
     dev.write_port(0, 0b11001100)
     dev.write_port(1, 0b10101010)
 
-    print bin(dev.read_port(2))
+    print(bin(dev.read_port(2)))
 
     ret = dev.set_io_mode(0, 255, 0)      # set all pins between 3-6 & 27-30 as output pins
-    # example has special fokus on port 3 & 30, the values ot the others are all set to high
+    # example has special focus on port 3 & 30, the values ot the others are all set to high
     # bitmask: 247: 1111 0111
     # 27: 1     low byte
     # 28: 1     
