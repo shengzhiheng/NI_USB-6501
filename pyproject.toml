@@ -9,7 +9,7 @@ version = "0.1.0"
 description = "Linux driver for National Instruments USB-6501"
 readme = "README.md"
 requires-python = ">=3.10"
-requires = ["pyusb>=1.2.0"]
+dependencies = ["pyusb>=1.2.0"]
 
 [tool.setuptools]
 py-modules = ["ni_usb_6501"]
