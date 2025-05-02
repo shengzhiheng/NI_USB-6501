@@ -1,0 +1,14 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ni_usb_6501"
+version = "0.1.0"
+description = "Linux driver for National Instruments USB-6501"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+py-modules = ["ni_usb_6501"]
