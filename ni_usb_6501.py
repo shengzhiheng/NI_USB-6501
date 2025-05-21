@@ -27,6 +27,13 @@ TODO
 """
 import usb.core
 import usb.util
+from importlib.metadata import version, PackageNotFoundError
+
+# expose package version
+try:
+    __version__ = version("ni_usb_6501")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 ID_VENDOR = 0x3923
 ID_PRODUCT = 0x718a
