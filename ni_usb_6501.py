@@ -79,6 +79,7 @@ class NiUsb6501:
 
         if self.device.is_kernel_driver_active(self.interface_number):
             self.device.detach_kernel_driver(self.interface_number)
+        self.device.reset()
         # set the active configuration. With no arguments, the first
         # configuration will be the active one
         self.device.set_configuration()
